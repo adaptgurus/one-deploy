@@ -62,6 +62,9 @@
   collections:
     - opennebula.deploy
   roles:
+    - role: helper/fw
+      tags: [fw]
+
     - role: helper/keys
       tags: [keys]
 
