@@ -167,6 +167,12 @@ opennebula_repo_url_defaults:
     {%- else -%}
       https://downloads.opennebula.io/repo/{{ one_version }}/{{ ansible_distribution }}
     {%- endif -%}
+  Rocky: >-
+    {%- if one_edition in ['Enterprise'] -%}
+      https://enterprise.opennebula.io/repo/{{ one_version }}/RedHat
+    {%- else -%}
+      https://downloads.opennebula.io/repo/{{ one_version }}/RedHat
+    {%- endif -%}
   Suse: >-
     {%- if one_edition in ['Enterprise'] -%}
       https://enterprise.opennebula.io/repo/{{ one_version }}/SLES
@@ -197,6 +203,19 @@ opennebula_repo_pre_enable_defaults:
       '8': []
       '9': []
       '10': []
+  Rocky:
+    subscription_manager:
+      '9': []
+      '10': []
+    config_manager:
+      '9': [epel, crb, highavailability]
+      '10': [epel, crb, highavailability]
+    extra_repos:
+      '9': []
+      '10': []
+    extra_rpms:
+      '9': [https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm]
+      '10': [https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm]
   openSUSE Leap:
     extra_repos:
       '16':
