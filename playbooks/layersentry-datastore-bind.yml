@@ -1,0 +1,126 @@
+---
+- name: Bind LayerSentry shared datastores without relaxing NFS export-root permissions
+  hosts: node
+  gather_facts: false
+  become: true
+  vars:
+    layersentry_datastore_binds:
+      - id: 0
+        source: /mnt/Backup_NVME_DATA/layersentry-opennebula/system
+      - id: 1
+        source: /mnt/Backup_NVME_DATA/layersentry-opennebula/image
+  tasks:
+    - name: Trigger and verify the existing NFS automount
+      ansible.builtin.stat:
+        path: "{{ item.source }}"
+      loop: "{{ layersentry_datastore_binds }}"
+      register: datastore_sources
+      failed_when: not datastore_sources.stat.isdir | d(false)
+
+    - name: Unmount any prior bind mount
+      ansible.posix.mount:
+        path: "/var/lib/one/datastores/{{ item.id }}"
+        state: unmounted
+      loop: "{{ layersentry_datastore_binds }}"
+
+    - name: Remove OneDeploy datastore symlinks
+      ansible.builtin.file:
+        path: "/var/lib/one/datastores/{{ item.id }}"
+        state: absent
+      loop: "{{ layersentry_datastore_binds }}"
+
+    - name: Create datastore bind targets
+      ansible.builtin.file:
+        path: "/var/lib/one/datastores/{{ item.id }}"
+        state: directory
+        owner: oneadmin
+        group: oneadmin
+        mode: u=rwx,g=rwx,o=
+      loop: "{{ layersentry_datastore_binds }}"
+
+    - name: Persist and mount shared datastore binds
+      ansible.posix.mount:
+        src: "{{ item.source }}"
+        path: "/var/lib/one/datastores/{{ item.id }}"
+        fstype: none
+        opts: bind,_netdev,x-systemd.requires=mnt-Backup_NVME_DATA.mount,x-systemd.after=mnt-Backup_NVME_DATA.mount
+        state: mounted
+      loop: "{{ layersentry_datastore_binds }}"
+
+- name: Bind the files datastore on OpenNebula frontends
+  hosts: frontend
+  gather_facts: false
+  become: true
+  vars:
+    files_source: /mnt/Backup_NVME_DATA/layersentry-opennebula/files
+    files_target: /var/lib/one/datastores/2
+  tasks:
+    - name: Trigger and verify the existing NFS automount
+      ansible.builtin.stat:
+        path: "{{ files_source }}"
+      register: files_source_stat
+      failed_when: not files_source_stat.stat.isdir | d(false)
+
+    - name: Unmount any prior files bind
+      ansible.posix.mount:
+        path: "{{ files_target }}"
+        state: unmounted
+
+    - name: Remove the OneDeploy files-datastore symlink
+      ansible.builtin.file:
+        path: "{{ files_target }}"
+        state: absent
+
+    - name: Create the files-datastore bind target
+      ansible.builtin.file:
+        path: "{{ files_target }}"
+        state: directory
+        owner: oneadmin
+        group: oneadmin
+        mode: u=rwx,g=rwx,o=
+
+    - name: Persist and mount the shared files-datastore bind
+      ansible.posix.mount:
+        src: "{{ files_source }}"
+        path: "{{ files_target }}"
+        fstype: none
+        opts: bind,_netdev,x-systemd.requires=mnt-Backup_NVME_DATA.mount,x-systemd.after=mnt-Backup_NVME_DATA.mount
+        state: mounted
+
+- name: Expose the NFS backup repository to the rsync backup endpoint
+  hosts: layersentry1
+  gather_facts: false
+  become: true
+  tags: [backup_endpoint]
+  vars:
+    backup_source: /mnt/Backup_NVME_DATA/layersentry-opennebula/backup
+    backup_target: /var/lib/one/datastores/100
+  tasks:
+    - name: Create the LayerSentry backup repository on NFS
+      ansible.builtin.file:
+        path: "{{ backup_source }}"
+        state: directory
+        owner: oneadmin
+        group: oneadmin
+        mode: u=rwx,g=rwx,o=
+
+    - name: Unmount any prior backup bind
+      ansible.posix.mount:
+        path: "{{ backup_target }}"
+        state: unmounted
+
+    - name: Ensure the backup bind target is a directory
+      ansible.builtin.file:
+        path: "{{ backup_target }}"
+        state: directory
+        owner: oneadmin
+        group: oneadmin
+        mode: u=rwx,g=rwx,o=
+
+    - name: Persist and mount the NFS-backed backup endpoint
+      ansible.posix.mount:
+        src: "{{ backup_source }}"
+        path: "{{ backup_target }}"
+        fstype: none
+        opts: bind,_netdev,x-systemd.requires=mnt-Backup_NVME_DATA.mount,x-systemd.after=mnt-Backup_NVME_DATA.mount
+        state: mounted

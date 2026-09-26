@@ -1,0 +1,5 @@
+NAME = "Backup_NVME_DATA"
+TYPE = "BACKUP_DS"
+DS_MAD = "rsync"
+RSYNC_HOST = "10.30.10.11"
+RSYNC_USER = "oneadmin"

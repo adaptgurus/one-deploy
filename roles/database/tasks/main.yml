@@ -59,3 +59,4 @@
         _become_user:
           MariaDB: root
       changed_when: false
+      no_log: true

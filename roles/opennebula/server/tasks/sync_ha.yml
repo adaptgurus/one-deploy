@@ -52,6 +52,7 @@
   changed_when: false
   register: shell
   ignore_errors: true
+  no_log: true
 
 - name: Detect if DB has been replicated (ha)
   ansible.builtin.set_fact:
@@ -105,6 +106,7 @@
             src: *leader_tar_gz
             mode: push
             checksum: true
+            private_key: "{{ frontend_sync_private_key | d(omit) }}"
           delegate_to: "{{ leader }}"
           become: false
 
@@ -133,6 +135,7 @@
                               -d '{{ db_name }}' /var/tmp/db_leader.sql
             executable: /bin/bash
           changed_when: true
+          no_log: true
 
         - name: Compress DB backup (ha)
           community.general.archive:
@@ -156,6 +159,7 @@
             src: *db_leader_sql_gz
             mode: push
             checksum: true
+            private_key: "{{ frontend_sync_private_key | d(omit) }}"
           delegate_to: "{{ leader }}"
           become: false
 
@@ -169,5 +173,6 @@
                                                              -d '{{ db_name }}' /dev/fd/0
             executable: /bin/bash
           changed_when: true
+          no_log: true
           vars:
             _db_leader_sql_gz: *db_leader_sql_gz

@@ -1,0 +1,35 @@
+---
+- name: Bind libvirt live-migration data to the validated migration overlay
+  hosts: node
+  gather_facts: false
+  become: true
+  vars:
+    layersentry_migration_ip: "10.20.10.{{ ansible_host.split('.')[-1] }}"
+  tasks:
+    - name: Bind incoming QEMU migration listeners to br-migrate
+      ansible.builtin.lineinfile:
+        path: /etc/libvirt/qemu.conf
+        regexp: '^#?migration_address\s*='
+        line: 'migration_address = "{{ layersentry_migration_ip }}"'
+        backup: true
+      notify: Restart libvirtd
+
+    - name: Advertise the br-migrate address to migration sources
+      ansible.builtin.lineinfile:
+        path: /etc/libvirt/qemu.conf
+        regexp: '^#?migration_host\s*='
+        line: 'migration_host = "{{ layersentry_migration_ip }}"'
+      notify: Restart libvirtd
+
+    - name: Permit libvirt migration ports only on the migration overlay
+      ansible.posix.firewalld:
+        rich_rule: rule family="ipv4" source address="10.20.10.0/24" port port="49152-49215" protocol="tcp" accept
+        permanent: true
+        immediate: true
+        state: enabled
+
+  handlers:
+    - name: Restart libvirtd
+      ansible.builtin.service:
+        name: libvirtd
+        state: restarted

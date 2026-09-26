@@ -70,6 +70,7 @@
                 src: *master_tar_gz
                 mode: push
                 checksum: true
+                private_key: "{{ frontend_sync_private_key | d(omit) }}"
               become: false
 
         - name: Unarchive AUTH data into /var/lib/one/.one/ (fed)
@@ -89,6 +90,7 @@
       changed_when: false
       register: shell
       ignore_errors: true
+      no_log: true
 
     - name: Detect if DB has been replicated (fed)
       ansible.builtin.set_fact:
@@ -125,6 +127,7 @@
                                   -d '{{ db_name }}' '/var/tmp/db_master-{{ inventory_hostname }}.sql'
                 executable: /bin/bash
               changed_when: true
+              no_log: true
 
             - name: Compress DB backup (fed)
               community.general.archive:
@@ -144,6 +147,7 @@
                 src: *db_master_sql_gz
                 mode: push
                 checksum: true
+                private_key: "{{ frontend_sync_private_key | d(omit) }}"
               become: false
 
         - name: Restore DB backup (fed)
@@ -157,5 +161,6 @@
                                                              -d '{{ db_name }}' /dev/fd/0
             executable: /bin/bash
           changed_when: true
+          no_log: true
           vars:
             _db_master_sql_gz: *db_master_sql_gz

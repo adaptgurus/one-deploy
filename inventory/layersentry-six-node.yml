@@ -1,0 +1,94 @@
+---
+# LayerSentry six-node nested-lab inventory.
+# Secrets are resolved from the controller environment and are never stored here.
+all:
+  vars:
+    env_name: layersentry-six-node
+    prod_env: true
+    ansible_user: layersentry-deploy
+    ansible_become: true
+    ansible_become_method: sudo
+    ansible_become_user: root
+    ansible_python_interpreter: /usr/bin/python3
+    # Keep controller authentication in SSH options rather than the private-key
+    # host variable: synchronize runs on a frontend and must use its generated
+    # ~/.ssh/id_rsa, not the controller-only /root key path.
+    ansible_ssh_common_args: '-i /root/.ssh/layersentry_lab_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o ProxyCommand="ssh -i /root/.ssh/layersentry_lab_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -W %h:%p layersentry-deploy@172.17.60.30"'
+
+    ensure_hostname: false
+    ensure_hosts: false
+    ensure_keys_for: [layersentry-deploy, root]
+    frontend_sync_private_key: /home/layersentry-deploy/.ssh/id_rsa
+
+    one_version: "7.4.1"
+    one_pass: "{{ lookup('env', 'LAYERSENTRY_ONEADMIN_PASSWORD') }}"
+    db_backend: MariaDB
+    db_password: "{{ lookup('env', 'LAYERSENTRY_ONEDB_PASSWORD') }}"
+    unsafe_migrations: false
+
+    # Cluster-private OpenNebula HA endpoint. Collision probe passed before use.
+    one_vip: 10.10.10.10
+    one_vip_cidr: 24
+    one_vip_if: br-cluster
+
+    features:
+      prometheus: false
+      # OneForm is optional and its package fetch stalled indefinitely on the
+      # elected leader while the rest of the frontend stack installed cleanly.
+      form: false
+      # FireEdge is not required for control-plane, host, datastore, network,
+      # or VM lifecycle validation and exhibited the same package-fetch stall.
+      gui: false
+
+    # The fork enables the EPEL repo before installing its release package on
+    # AlmaLinux. Supply the missing bootstrap package through its supported
+    # repository override so the subsequent epel/crb/HA enablement is valid.
+    opennebula_repo_pre_enable:
+      AlmaLinux:
+        extra_rpms:
+          "9": [epel-release]
+
+    # Existing validated NFSv4.2 mount. Each path is LayerSentry-owned.
+    ds:
+      mode: shared
+      config:
+        mounts:
+          - type: system
+            path: /mnt/Backup_NVME_DATA/layersentry-opennebula/system
+          - type: image
+            path: /mnt/Backup_NVME_DATA/layersentry-opennebula/image
+          - type: file
+            path: /mnt/Backup_NVME_DATA/layersentry-opennebula/files
+
+    # Existing VNI 105 bridge; OpenNebula must reuse it, not recreate the VXLAN.
+    vn:
+      layersentry-workload:
+        managed: true
+        template:
+          VN_MAD: bridge
+          BRIDGE: br-vm
+          GUEST_MTU: 1450
+          AR:
+            TYPE: IP4
+            IP: 10.50.10.100
+            SIZE: 100
+          NETWORK_ADDRESS: 10.50.10.0
+          NETWORK_MASK: 255.255.255.0
+
+frontend:
+  hosts:
+    layersentry1: { ansible_host: 10.10.10.11 }
+    layersentry2: { ansible_host: 10.10.10.12 }
+    layersentry3: { ansible_host: 10.10.10.13 }
+
+node:
+  hosts:
+    layersentry1: { ansible_host: 10.10.10.11 }
+    layersentry2: { ansible_host: 10.10.10.12 }
+    layersentry3: { ansible_host: 10.10.10.13 }
+    layersentry4: { ansible_host: 10.10.10.14 }
+    layersentry5: { ansible_host: 10.10.10.15 }
+    layersentry6: { ansible_host: 10.10.10.16 }
+
+grafana:
+  hosts: {}
