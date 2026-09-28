@@ -64,3 +64,7 @@
         stdin: "{{ _new_lines | join(_lf) }}"
       changed_when: true
       when: _new_lines | count > 0
+
+- name: Preserve native host preparation on cloud-init EL images
+  ansible.builtin.import_tasks:
+    file: cloud_init.yml
