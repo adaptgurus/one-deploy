@@ -9,3 +9,24 @@
 
 - ansible.builtin.include_role:
     name: opennebula/leader
+
+- name: Reconcile standalone HA zone endpoint through native API
+  when:
+    - use_ha is true
+    - one_vip is defined
+    - inventory_hostname == leader
+  become: true
+  become_user: oneadmin
+  block:
+    - name: Read standalone HA zone endpoint
+      ansible.builtin.command:
+        argv: [onezone, show, "{{ zone_name }}", --json]
+      register: standalone_zone
+      changed_when: false
+
+    - name: Publish the configured HA VIP in the standalone zone
+      ansible.builtin.command:
+        argv: [onezone, update, "{{ zone_name }}", --append]
+        stdin: "ENDPOINT = \"http://{{ one_vip }}:2633/RPC2\"\n"
+      when: (standalone_zone.stdout | from_json).ZONE.TEMPLATE.ENDPOINT != 'http://' ~ one_vip ~ ':2633/RPC2'
+      changed_when: true
