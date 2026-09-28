@@ -35,7 +35,7 @@
       {{ federation.groups.frontend | reject('in', [leader]) }}
   when: inventory_hostname == leader
 
-- always: # noqa key-order[task]
+- always:
     - name: Remove fireedge-leader.tar.gz (cleanup)
       ansible.builtin.file:
         path: &fireedge_leader_tar_gz /var/tmp/fireedge-leader.tar.gz
@@ -55,24 +55,50 @@
             force_archive: true
             owner: "{{ ansible_user }}"
             mode: u=rw,go=
+          no_log: true
 
     - when:
         - inventory_hostname != leader
         - not key_ok
       block:
-        # NOTE: Artifacts are copied from Front-end to Front-end via RSYNC/SSH *directly*,
-        #       please make sure SSH/RSA keys are distributed accordingly (password-less login).
-        - name: Distribute FireEdge data (ha)
-          ansible.posix.synchronize:
-            dest: *fireedge_leader_tar_gz
-            src: *fireedge_leader_tar_gz
-            mode: push
-            checksum: true
-          delegate_to: "{{ leader }}"
-          become: false
+        - name: Transfer FireEdge artifact through the controller
+          no_log: true
+          block:
+            - name: Create private FireEdge controller transfer directory
+              ansible.builtin.tempfile:
+                state: directory
+                prefix: one-deploy-fireedge-
+              delegate_to: localhost
+              become: false
+              register: fireedge_transfer
+
+            - name: Fetch FireEdge artifact through verified controller SSH
+              ansible.builtin.fetch:
+                src: *fireedge_leader_tar_gz
+                dest: "{{ fireedge_transfer.path }}/fireedge-leader.tar.gz"
+                flat: true
+                validate_checksum: true
+              delegate_to: "{{ leader }}"
+              become: false
+
+            - name: Copy FireEdge artifact through verified controller SSH
+              ansible.builtin.copy:
+                src: "{{ fireedge_transfer.path }}/fireedge-leader.tar.gz"
+                dest: *fireedge_leader_tar_gz
+                mode: '0600'
+
+          always:
+            - name: Remove private FireEdge controller transfer directory
+              ansible.builtin.file:
+                path: "{{ fireedge_transfer.path }}"
+                state: absent
+              delegate_to: localhost
+              become: false
+              when: fireedge_transfer is defined and fireedge_transfer.path is defined
 
         - name: Unarchive FireEdge data into /var/lib/one/.one/ (ha)
           ansible.builtin.unarchive:
             dest: /var/lib/one/.one/
             src: *fireedge_leader_tar_gz
             remote_src: true
+          no_log: true
