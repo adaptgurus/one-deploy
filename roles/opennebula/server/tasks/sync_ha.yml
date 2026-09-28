@@ -97,16 +97,41 @@
         - inventory_hostname != leader
         - not (auth_ok and key_ok)
       block:
-        # NOTE: Artifacts are copied from Front-end to Front-end via RSYNC/SSH *directly*,
-        #       please make sure SSH/RSA keys are distributed accordingly (password-less login).
-        - name: Distribute AUTH and SSH data (ha)
-          ansible.posix.synchronize:
-            dest: *leader_tar_gz
-            src: *leader_tar_gz
-            mode: push
-            checksum: true
-          delegate_to: "{{ leader }}"
-          become: false
+        # Controller mediation keeps its SSH identity off the managed nodes.
+        # Fetch/copy use Ansible's configured strict host-key verification.
+        - name: Distribute AUTH and SSH data through the controller (ha)
+          no_log: true
+          block:
+            - name: Allocate private controller transfer directory
+              ansible.builtin.tempfile:
+                state: directory
+                prefix: one-ha-sync-
+              delegate_to: localhost
+              become: false
+              register: ha_controller_transfer
+
+            - name: Fetch leader artifact through verified controller SSH
+              ansible.builtin.fetch:
+                src: *leader_tar_gz
+                dest: "{{ ha_controller_transfer.path }}/artifact"
+                flat: true
+                validate_checksum: true
+              delegate_to: "{{ leader }}"
+
+            - name: Copy artifact through verified controller SSH
+              ansible.builtin.copy:
+                src: "{{ ha_controller_transfer.path }}/artifact"
+                dest: *leader_tar_gz
+                owner: "{{ ansible_user }}"
+                mode: '0600'
+          always:
+            - name: Remove private controller transfer directory
+              ansible.builtin.file:
+                path: "{{ ha_controller_transfer.path }}"
+                state: absent
+              delegate_to: localhost
+              become: false
+              when: ha_controller_transfer.path is defined
 
         - name: Unarchive AUTH and SSH data into /var/lib/one/ (ha)
           ansible.builtin.unarchive:
@@ -148,16 +173,41 @@
         - inventory_hostname != leader
         - not db_ok
       block:
-        # NOTE: Artifacts are copied from Front-end to Front-end via RSYNC/SSH *directly*,
-        #       please make sure SSH/RSA keys are distributed accordingly (password-less login).
-        - name: Distribute DB backup (ha)
-          ansible.posix.synchronize:
-            dest: *db_leader_sql_gz
-            src: *db_leader_sql_gz
-            mode: push
-            checksum: true
-          delegate_to: "{{ leader }}"
-          become: false
+        # Controller mediation keeps its SSH identity off the managed nodes.
+        # Fetch/copy use Ansible's configured strict host-key verification.
+        - name: Distribute DB backup through the controller (ha)
+          no_log: true
+          block:
+            - name: Allocate private controller transfer directory
+              ansible.builtin.tempfile:
+                state: directory
+                prefix: one-ha-sync-
+              delegate_to: localhost
+              become: false
+              register: ha_controller_transfer
+
+            - name: Fetch leader artifact through verified controller SSH
+              ansible.builtin.fetch:
+                src: *db_leader_sql_gz
+                dest: "{{ ha_controller_transfer.path }}/artifact"
+                flat: true
+                validate_checksum: true
+              delegate_to: "{{ leader }}"
+
+            - name: Copy artifact through verified controller SSH
+              ansible.builtin.copy:
+                src: "{{ ha_controller_transfer.path }}/artifact"
+                dest: *db_leader_sql_gz
+                owner: "{{ ansible_user }}"
+                mode: '0600'
+          always:
+            - name: Remove private controller transfer directory
+              ansible.builtin.file:
+                path: "{{ ha_controller_transfer.path }}"
+                state: absent
+              delegate_to: localhost
+              become: false
+              when: ha_controller_transfer.path is defined
 
         - name: Restore DB backup (ha)
           ansible.builtin.shell:
