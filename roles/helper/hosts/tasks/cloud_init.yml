@@ -1,0 +1,30 @@
+---
+# cloud-init's per-boot update_etc_hosts can regenerate /etc/hosts from this
+# template and erase entries appended by OneDeploy. Preserve the same approved
+# static inventory in the source template, without disabling cloud-init.
+- name: Inspect cloud-init EL hosts template
+  ansible.builtin.stat:
+    path: /etc/cloud/templates/hosts.redhat.tmpl
+    follow: false
+  register: one_cloud_hosts_template
+  when:
+    - ensure_hosts | bool
+    - ansible_os_family == 'RedHat'
+
+- name: Persist approved static cluster names in cloud-init source template
+  ansible.builtin.blockinfile:
+    path: /etc/cloud/templates/hosts.redhat.tmpl
+    marker: '# {mark} ONEDEPLOY STATIC CLUSTER HOSTS'
+    create: false
+    block: |
+      {% for name in federation.groups.all | sort %}
+      {% if hostvars[name].ansible_host | default('') %}
+      {{ hostvars[name].ansible_host }} {{ name }}
+      {% endif %}
+      {% endfor %}
+  when:
+    - ensure_hosts | bool
+    - ansible_os_family == 'RedHat'
+    - one_cloud_hosts_template.stat.exists | default(false)
+    - one_cloud_hosts_template.stat.isreg | default(false)
+    - not (one_cloud_hosts_template.stat.islnk | default(false))
