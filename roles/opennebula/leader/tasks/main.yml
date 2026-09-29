@@ -1,8 +1,11 @@
 ---
-- name: Guess the Leader
+- name: Select a real Front-end for leader discovery
   ansible.builtin.set_fact:
+    # Never SSH to the floating API VIP: it can move between Front-ends with
+    # different SSH host keys. Query one enrolled Front-end, then derive the
+    # elected Raft leader from the authoritative zone SERVER_POOL below.
     leader: >-
-      {{ one_vip | d(federation.groups.frontend[0]) }}
+      {{ federation.groups.frontend[0] }}
 
 - block:
     - name: Decrement the retry counter
