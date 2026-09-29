@@ -25,8 +25,44 @@
       changed_when: false
 
     - name: Publish the configured HA VIP in the standalone zone
-      ansible.builtin.command:
-        argv: [onezone, update, "{{ zone_name }}", --append]
-        stdin: "ENDPOINT = \"http://{{ one_vip }}:2633/RPC2\"\n"
       when: (standalone_zone.stdout | from_json).ZONE.TEMPLATE.ENDPOINT != 'http://' ~ one_vip ~ ':2633/RPC2'
-      changed_when: true
+      block:
+        - name: Allocate protected zone endpoint template
+          ansible.builtin.tempfile:
+            state: file
+            prefix: onezone-endpoint-
+          register: zone_endpoint_template
+
+        - name: Render zone endpoint template
+          ansible.builtin.copy:
+            dest: "{{ zone_endpoint_template.path }}"
+            mode: '0600'
+            content: |
+              ENDPOINT = "http://{{ one_vip }}:2633/RPC2"
+
+        - name: Append the configured HA VIP through the native CLI
+          ansible.builtin.command:
+            argv:
+              - onezone
+              - update
+              - "{{ zone_name }}"
+              - --append
+              - "{{ zone_endpoint_template.path }}"
+          changed_when: true
+
+        - name: Read standalone HA zone endpoint after update
+          ansible.builtin.command:
+            argv: [onezone, show, "{{ zone_name }}", --json]
+          register: standalone_zone_after
+          changed_when: false
+
+        - name: Require exact HA VIP endpoint readback
+          ansible.builtin.assert:
+            that:
+              - (standalone_zone_after.stdout | from_json).ZONE.TEMPLATE.ENDPOINT == 'http://' ~ one_vip ~ ':2633/RPC2'
+      always:
+        - name: Remove protected zone endpoint template
+          ansible.builtin.file:
+            path: "{{ zone_endpoint_template.path }}"
+            state: absent
+          when: zone_endpoint_template.path is defined
